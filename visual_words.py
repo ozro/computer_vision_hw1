@@ -1,4 +1,4 @@
-import multiprocessing
+from multiprocessing import Pool
 import os
 import random
 import time
@@ -76,16 +76,18 @@ def compute_dictionary_one_image(args):
     * i: index of training image
     * alpha: number of random samples
     * image_path: path of image file
-    * time_start: time stamp of start time
-    * temp_file: temp file to save output to
+    * tmpdirname: path of temp directory
 
     [saved]
     * sampled_response: numpy.ndarray of shape (alpha,3F)
     '''
 
-    i,alpha,image_path, time_start, temp_file = args
+    i,alpha,image_path, tmpdirname = args
 
     # ----- Implementation -----
+    alpha = int(alpha)
+    image_path = os.path.join("..", "data", image_path)
+    print("#{}: Processing image at {}".format(i, image_path))
     image = skimage.io.imread(image_path)
     image = image.astype('float')/255
     filter_responses = extract_filter_responses(image)
@@ -95,8 +97,10 @@ def compute_dictionary_one_image(args):
     np.random.shuffle(x)
     mask = np.reshape(np.asarray(x), filter_responses.shape[0:2])
     response = filter_responses[mask,:]
-
-    np.save(temp_file, response)
+    
+    tmpfilename = os.path.join(tmpdirname, i + "_results") 
+    print("#{}: Saving response with shape {} at {}".format(i, response.shape, tmpfilename))
+    np.save(tmpfilename, response)
 
 def compute_dictionary(num_workers=2):
     '''
@@ -112,4 +116,42 @@ def compute_dictionary(num_workers=2):
     train_data = np.load("../data/train_data.npz")
 
     # ----- Implementation -----
-    pass
+
+    # Create temp dir for results
+    with tempfile.TemporaryDirectory() as tmpdirname:  
+
+        # Generate args
+        K = 200
+        alpha = 200
+        filter_count = 20
+
+        files = train_data['files']
+        num_files = len(files)
+        indices = np.arange(num_files)
+        alphas = np.repeat(alpha, num_files)
+        dirs = np.repeat(tmpdirname, num_files)
+        print("\nStarted dictionary computation with temporary directory:", tmpdirname)
+        args = np.column_stack((indices, alphas, files, dirs))
+        print("Starting pool of {} workers\n".format(num_workers))
+        
+        # Start subprocess
+        pool = Pool(processes=num_workers)
+        for _ in pool.imap_unordered(compute_dictionary_one_image, args):
+            pass
+        print("\nClosing Pools")
+        pool.close()
+
+        print("\n Gathering Results")
+        results = np.empty((alpha * num_files, 3*filter_count))
+        i = 0
+        for filename in os.listdir(tmpdirname):
+            print("Adding {} to index {}:{}".format(os.path.join(tmpdirname, filename), i*alpha, (i+1) * alpha))
+            results[i*alpha:(i+1)*alpha, :] = np.load(os.path.join(tmpdirname, filename))
+            i += 1
+        
+        print("\n Computing k-means with n_clusters = {}, n_jobs = {}", K, num_workers)
+        kmeans = sklearn.cluster.KMeans(n_clusters=K, n_jobs=num_workers).fit(results)
+        dictionary = kmeans.cluster_centers_
+        savefile = "dictionary.npy"
+        print("Saving results to: {}".format(savefile))
+        np.save(savefile, dictionary)
