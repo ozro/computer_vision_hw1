@@ -63,8 +63,14 @@ def get_visual_words(image,dictionary):
     * wordmap: numpy.ndarray of shape (H,W)
     '''
     
-    # ----- TODO -----
-    pass
+    # ----- Implementation -----
+    filter_responses = extract_filter_responses(image)
+    shape = filter_responses.shape
+    responses = np.reshape(filter_responses, (np.prod(shape[0:2]), filter_responses.shape[2]))
+    distances = scipy.spatial.distance.cdist(responses, dictionary, "euclidean")
+    mins = np.argmin(distances, axis = 1)
+    mins = np.reshape(mins, shape[0:2])/dictionary.shape[0]
+    return mins
 
 
 def compute_dictionary_one_image(args):
@@ -82,7 +88,7 @@ def compute_dictionary_one_image(args):
     * sampled_response: numpy.ndarray of shape (alpha,3F)
     '''
 
-    i,alpha,image_path, tmpdirname = args
+    i,alpha,image_path,tmpdirname = args
 
     # ----- Implementation -----
     alpha = int(alpha)
