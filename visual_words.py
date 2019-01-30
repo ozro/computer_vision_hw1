@@ -149,7 +149,7 @@ def compute_dictionary(num_workers=2):
             results[i*alpha:(i+1)*alpha, :] = np.load(os.path.join(tmpdirname, filename))
             i += 1
         
-        print("\n Computing k-means with n_clusters = {}, n_jobs = {}", K, num_workers)
+        print("\n Computing k-means with n_clusters = {}, n_jobs = {}, data shape = {}", K, num_workers, results.shape)
         kmeans = sklearn.cluster.KMeans(n_clusters=K, n_jobs=num_workers).fit(results)
         dictionary = kmeans.cluster_centers_
         savefile = "dictionary.npy"
