@@ -10,20 +10,41 @@ import skimage.io
 
 if __name__ == '__main__':
 
-    num_cores = util.get_num_CPU()
-    print("Starting process with {} cores".format(num_cores))
-    #path_img = "../data/kitchen/sun_aasmevtpkslccptd.jpg"
-    path_img = "../data/aquarium/sun_aairflxfskjrkepm.jpg"
-    image = skimage.io.imread(path_img)
-    image = image.astype('float')/255
-    filter_responses = visual_words.extract_filter_responses(image)
+    print("Starting")
+
+    # num_cores = util.get_num_CPU()
+    # path_img = "../data/kitchen/sun_aasmevtpkslccptd.jpg"
+    # image = skimage.io.imread(path_img)
+    # image = image.astype('float')/255
+    # dictionary = np.load('dictionary.npy')
+
+    ## Display filter responses
+    #filter_responses = visual_words.extract_filter_responses(image)
     #util.display_filter_responses(filter_responses)
 
+    ## Compute dictionary
     #visual_words.compute_dictionary(num_workers=num_cores)
 
-    dictionary = np.load('dictionary.npy')
-    wordmap = visual_words.get_visual_words(image,dictionary)
-    util.save_wordmap(wordmap, "wordmap")
+
+    ## Test histograms
+    # wordmap = visual_words.get_visual_words(image,dictionary)
+    # hist = visual_recog.get_feature_from_wordmap(wordmap,200)
+    # plt.bar(np.arange(200),hist)
+    # plt.show()
+
+    ## Generate visualized wordmaps
+    # files = ["../data/laundromat/sun_aabvooxzwmzzvwds.jpg",
+    #          "../data/laundromat/sun_aaprcnhpdrhlnhji.jpg",
+    #          "../data/laundromat/sun_aalvewxltowiudlw.jpg"]
+    # i = 0
+    # for path in files:
+    #     image = skimage.io.imread(path)
+    #     image = image.astype('float')/255
+    #     wordmap = visual_words.get_visual_words(image,dictionary)
+    #     util.save_wordmap(wordmap, "wordmap{}".format(i))
+    #     i += 1
+
+    ## Build recognition system
     #visual_recog.build_recognition_system(num_workers=num_cores)
 
     #conf, accuracy = visual_recog.evaluate_recognition_system(num_workers=num_cores)

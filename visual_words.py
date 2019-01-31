@@ -69,7 +69,7 @@ def get_visual_words(image,dictionary):
     responses = np.reshape(filter_responses, (np.prod(shape[0:2]), filter_responses.shape[2]))
     distances = scipy.spatial.distance.cdist(responses, dictionary, "euclidean")
     mins = np.argmin(distances, axis = 1)
-    mins = np.reshape(mins, shape[0:2])/dictionary.shape[0]
+    mins = np.reshape(mins, shape[0:2])#/dictionary.shape[0]
     return mins
 
 

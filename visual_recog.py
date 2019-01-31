@@ -99,10 +99,9 @@ def get_feature_from_wordmap(wordmap,dict_size):
     * hist: numpy.ndarray of shape (K)
     '''
     
-    # ----- TODO -----
-    pass
-
-
+    # ----- Implemented -----
+    hist,_ = np.histogram(wordmap, bins=np.arange(dict_size+1), density=True)
+    return hist
 
 def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
     '''
@@ -117,14 +116,63 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
     * hist_all: numpy.ndarray of shape (K*(4^layer_num-1)/3)
     '''
     
-    # ----- TODO -----
+    # ----- Implementation -----
+    hist_all = np.zeros(int(dict_size*(4**(layer_num)-1)/3))
+    base_weight = 0.5
 
-    pass
+    i = 0
+    for curr_layer in range(layer_num-1, -1, -1):
+        if(curr_layer == layer_num-1): #Smallest cell size, calculate histograms
+            for cell in ndarray_split(wordmap, 2**curr_layer):
+                hist = get_feature_from_wordmap(cell, dict_size)
+                hist_all[i:i+dict_size] = hist * base_weight
+                i+=dict_size
+        else: #Construct histograms from previous layer
+            prev_len = 2**(curr_layer+1)
+            curr_len = 2**curr_layer
 
+            prev_inds = prev_len*prev_len*dict_size
+            prev_hists = hist_all[i-prev_inds:i]
+            for j in range(curr_len*curr_len):
+                row,col = np.unravel_index(j, (curr_len, curr_len))
+                start1 = np.ravel_multi_index((row*2,col*2*dict_size), (prev_len, prev_len*dict_size)) 
+                start2 = start1 + dict_size * prev_len
+                if(curr_layer != 0):
+                    weight = 0.5
+                else:
+                    weight = 1
+                #print("Construction histogram at ({},{}) at indices {},{},{} and {}".format(row, col, start1, start1+dict_size, start2, start2 + dict_size))
+                hist1 = (prev_hists[start1:start1+dict_size])
+                hist2 = (prev_hists[start1 + dict_size:start1+dict_size*2])
+                hist3 = (prev_hists[start2:start2+dict_size])
+                hist4 = (prev_hists[start2 + dict_size:start2+dict_size*2])
+                # print(hist1)
+                # print(hist2)
+                # print(hist3)
+                # print(hist4)
+                # print(hist1+hist2+hist3+hist4)
+                hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight
 
+                i+=dict_size
+    return hist_all
 
+def ndarray_split(a, n):
+    '''
+    Split a 2D array into n*n cells, evenly sized.
 
+    [input]
+    * a: numpy.ndarray of 2 dimensions
+    * n: number of splits per side
 
+    [output]
+    * split_array: array of 2D cells
+    '''
 
-    
+    split_array = []
+    vsplit = np.array_split(a, n, axis=0)
+    i = 0
+    for row in vsplit:
+        split_array.extend(np.array_split(row, n, axis=1))
+        i += 1
 
+    return np.asarray(split_array)
