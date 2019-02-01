@@ -79,13 +79,10 @@ def distance_to_set(word_hist,histograms):
     [output]
     * sim: numpy.ndarray of shape (N)
     '''
-    pass
-    
 
-
-    # ----- TODO -----
-
-
+    # ----- Implementation -----
+    hists = np.tile(word_hist, (histograms.shape[0], 1))
+    return np.sum(np.minimum(hists, histograms), axis=1)
 
 def get_feature_from_wordmap(wordmap,dict_size):
     '''
@@ -141,16 +138,10 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
                     weight = 0.5
                 else:
                     weight = 1
-                #print("Construction histogram at ({},{}) at indices {},{},{} and {}".format(row, col, start1, start1+dict_size, start2, start2 + dict_size))
                 hist1 = (prev_hists[start1:start1+dict_size])
                 hist2 = (prev_hists[start1 + dict_size:start1+dict_size*2])
                 hist3 = (prev_hists[start2:start2+dict_size])
                 hist4 = (prev_hists[start2 + dict_size:start2+dict_size*2])
-                # print(hist1)
-                # print(hist2)
-                # print(hist3)
-                # print(hist4)
-                # print(hist1+hist2+hist3+hist4)
                 hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight
 
                 i+=dict_size
