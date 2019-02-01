@@ -54,6 +54,21 @@ def build_recognition_system(num_workers=2):
     np.savez("trained_system", dictionary=dictionary, features=features, labels=labels, SPM_layer_num=SPM_layer_num)
 
 def get_image_feature_worker(file_path, dictionary, SPM_layer_num, K, index, save_dir):
+    '''
+    Worker for asynchronous extraction of image feature vector`
+
+    [input]
+    * file_path: path to the image 
+    * dictionary: trained dictionary
+    * SPM_layer_num: number of layers in spatial pyramid
+    * K: number of entries in dictionary
+    * index: index of current image
+    * save_dir: directory to save results to 
+
+    [saved]
+    * feature: SPM histogram vector for image 
+    '''
+
     print("#{}: Processing image at {}".format(index, file_path))
     feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
     tmpfilename = os.path.join(save_dir, "{}".format(index)) 
@@ -75,8 +90,53 @@ def evaluate_recognition_system(num_workers=2):
 
     test_data = np.load("../data/test_data.npz")
     trained_system = np.load("trained_system.npz")
-    # ----- TODO -----
+    # ----- Implementation -----
+    test_files = test_data['files']
+    test_labels = test_data['labels']
 
+    SPM_layer_num = trained_system['SPM_layer_num']
+    trained_features = trained_system['features']
+    trained_labels = trained_system['labels']
+    dictionary = trained_system['dictionary']
+    K = dictionary.shape[0]
+
+    result_labels = np.zeros(test_labels.size)
+    i = 0
+    pool = Pool(num_workers)
+    for file_path in test_files:
+        pool.apply_async(evaluation_worker, args = (file_path,dictionary,SPM_layer_num,K,i, trained_features, trained_labels, result_labels), callback = evaluation_callback)
+        i+=1
+    pool.close()
+    pool.join()
+
+    print("Constructing confusion matrix")
+
+    conf = np.zeros((8,8))
+    for i in range(len(result_labels)):
+        eval_label = int(result_labels[i])
+        true_label = test_labels[i]
+        print("Test {} classified {} as {}".format(i, true_label, eval_label))
+        conf[true_label][eval_label] += 1
+    accuracy = np.diag(conf).sum()/conf.sum()
+
+    return(conf, accuracy)
+
+
+def evaluation_worker(file_path, dictionary, SPM_layer_num, K, index, trained_features, trained_labels, result_labels):
+    print("#{}: Processing image at {}".format(index, file_path))
+    feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
+    print("#{}: Finding best label from feature of shape {}".format(index, feature.shape))
+    sim = distance_to_set(feature, trained_features)
+    max_index = sim.argmax(axis=0)
+    label = trained_labels[max_index]
+
+    return (index, label, result_labels)
+
+
+def evaluation_callback(result):
+    index, label, result_labels = result
+    print("Saving label {} at index {}".format(label, index))
+    result_labels[index] = label
 
 def get_image_feature(file_path,dictionary,layer_num,K):
     '''

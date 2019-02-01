@@ -1,4 +1,4 @@
-from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool as Pool
 import os
 import random
 import time
@@ -133,19 +133,17 @@ def compute_dictionary(num_workers=2):
 
         files = train_data['files']
         num_files = len(files)
-        indices = np.arange(num_files)
-        alphas = np.repeat(alpha, num_files)
-        dirs = np.repeat(tmpdirname, num_files)
         print("\nStarted dictionary computation with temporary directory:", tmpdirname)
-        args = np.column_stack((indices, alphas, files, dirs))
         print("Starting pool of {} workers\n".format(num_workers))
         
         # Start subprocess
-        pool = Pool(processes=num_workers)
-        for _ in pool.imap_unordered(compute_dictionary_one_image, args):
-            pass
-        print("\nClosing Pools")
+        pool = Pool(num_workers)
+        i = 0
+        for file_path in files:
+            pool.apply_async(compute_dictionary_one_image, (i, alpha, file_path,tmpdirname))
+            i+=1
         pool.close()
+        pool.join()
 
         print("\n Gathering Results")
         results = np.empty((alpha * num_files, 3*filter_count))
