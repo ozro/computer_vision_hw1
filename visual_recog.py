@@ -5,6 +5,10 @@ import imageio
 import os,time
 import math
 import visual_words
+import skimage.io
+import matplotlib.pyplot as plt
+from multiprocessing.pool import ThreadPool as Pool
+
 
 def build_recognition_system(num_workers=2):
     '''
@@ -24,9 +28,37 @@ def build_recognition_system(num_workers=2):
 
     train_data = np.load("../data/train_data.npz")
     dictionary = np.load("dictionary.npy")
-    # ----- TODO -----
 
-    pass
+    # ----- Implementation -----
+    file_paths = train_data['files']
+    labels = train_data['labels']
+    SPM_layer_num = 3
+    K = dictionary.shape[0]
+    save_dir = os.path.join("..","features")
+    feature_size = int(K*(4**SPM_layer_num-1)/3)
+    features = np.zeros((labels.size, feature_size))
+
+    i = 0
+    pool = Pool(num_workers)
+    for file_path in file_paths:
+        pool.apply_async(get_image_feature_worker, (file_path,dictionary,SPM_layer_num,K,i,save_dir))
+        i+=1
+    pool.close()
+    pool.join()
+
+    i = 0
+    for filename in os.listdir(save_dir):
+        print("Adding {} to index {}".format(os.path.join(save_dir, filename), i))
+        features[i,:] = np.load(os.path.join(save_dir, filename))
+        i += 1
+    np.savez("trained_system", dictionary=dictionary, features=features, labels=labels, SPM_layer_num=SPM_layer_num)
+
+def get_image_feature_worker(file_path, dictionary, SPM_layer_num, K, index, save_dir):
+    print("#{}: Processing image at {}".format(index, file_path))
+    feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
+    tmpfilename = os.path.join(save_dir, "{}".format(index)) 
+    print("#{}: Saving response with shape {} at {}".format(index, feature.shape, tmpfilename))
+    np.save(tmpfilename, feature)
 
 def evaluate_recognition_system(num_workers=2):
     '''
@@ -44,9 +76,6 @@ def evaluate_recognition_system(num_workers=2):
     test_data = np.load("../data/test_data.npz")
     trained_system = np.load("trained_system.npz")
     # ----- TODO -----
-    pass
-
-
 
 
 def get_image_feature(file_path,dictionary,layer_num,K):
@@ -62,10 +91,14 @@ def get_image_feature(file_path,dictionary,layer_num,K):
     [output]
     * feature: numpy.ndarray of shape (K)
     '''
-    pass
 
 
-    # ----- TODO -----
+    # ----- Implemented -----
+    image = skimage.io.imread(file_path)
+    image = image.astype('float')/255
+
+    wordmap = visual_words.get_visual_words(image,dictionary)
+    return get_feature_from_wordmap_SPM(wordmap, layer_num, K)
 
 
 def distance_to_set(word_hist,histograms):
@@ -117,53 +150,36 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
     hist_all = np.zeros(int(dict_size*(4**(layer_num)-1)/3))
     base_weight = 0.5
 
+    #Construct smallest layer histograms
     i = 0
-    for curr_layer in range(layer_num-1, -1, -1):
-        if(curr_layer == layer_num-1): #Smallest cell size, calculate histograms
-            for cell in ndarray_split(wordmap, 2**curr_layer):
-                hist = get_feature_from_wordmap(cell, dict_size)
-                hist_all[i:i+dict_size] = hist * base_weight
-                i+=dict_size
-        else: #Construct histograms from previous layer
-            prev_len = 2**(curr_layer+1)
-            curr_len = 2**curr_layer
-
-            prev_inds = prev_len*prev_len*dict_size
-            prev_hists = hist_all[i-prev_inds:i]
-            for j in range(curr_len*curr_len):
-                row,col = np.unravel_index(j, (curr_len, curr_len))
-                start1 = np.ravel_multi_index((row*2,col*2*dict_size), (prev_len, prev_len*dict_size)) 
-                start2 = start1 + dict_size * prev_len
-                if(curr_layer != 0):
-                    weight = 0.5
-                else:
-                    weight = 1
-                hist1 = (prev_hists[start1:start1+dict_size])
-                hist2 = (prev_hists[start1 + dict_size:start1+dict_size*2])
-                hist3 = (prev_hists[start2:start2+dict_size])
-                hist4 = (prev_hists[start2 + dict_size:start2+dict_size*2])
-                hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight
-
-                i+=dict_size
-    return hist_all
-
-def ndarray_split(a, n):
-    '''
-    Split a 2D array into n*n cells, evenly sized.
-
-    [input]
-    * a: numpy.ndarray of 2 dimensions
-    * n: number of splits per side
-
-    [output]
-    * split_array: array of 2D cells
-    '''
-
-    split_array = []
-    vsplit = np.array_split(a, n, axis=0)
-    i = 0
+    vsplit = np.array_split(wordmap, 2**(layer_num -1), axis=0)
     for row in vsplit:
-        split_array.extend(np.array_split(row, n, axis=1))
-        i += 1
+        cells = np.array_split(row, 2**(layer_num -1), axis=1)
+        for cell in cells:
+            hist = get_feature_from_wordmap(cell, dict_size)
+            hist_all[i:i+dict_size] = hist * base_weight
+            i+=dict_size
+    
+    #Construct histograms from previous layer
+    for curr_layer in range(layer_num-2, -1, -1):
+        prev_len = 2**(curr_layer+1)
+        curr_len = 2**curr_layer
 
-    return np.asarray(split_array)
+        prev_inds = prev_len*prev_len*dict_size
+        prev_hists = hist_all[i-prev_inds:i]
+        for j in range(curr_len*curr_len):
+            row,col = np.unravel_index(j, (curr_len, curr_len))
+            start1 = np.ravel_multi_index((row*2,col*2*dict_size), (prev_len, prev_len*dict_size)) 
+            start2 = start1 + dict_size * prev_len
+            if(curr_layer != 0):
+                weight = 0.5
+            else:
+                weight = 1
+            hist1 = (prev_hists[start1:start1+dict_size])
+            hist2 = (prev_hists[start1 + dict_size:start1+dict_size*2])
+            hist3 = (prev_hists[start2:start2+dict_size])
+            hist4 = (prev_hists[start2 + dict_size:start2+dict_size*2])
+            hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight
+
+            i+=dict_size
+    return hist_all

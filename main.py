@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     print("Starting")
 
-    # num_cores = util.get_num_CPU()
+    num_cores = util.get_num_CPU()
     # path_img = "../data/kitchen/sun_aasmevtpkslccptd.jpg"
     # image = skimage.io.imread(path_img)
     # image = image.astype('float')/255
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     #     i += 1
 
     ## Build recognition system
-    #visual_recog.build_recognition_system(num_workers=num_cores)
+    visual_recog.build_recognition_system(num_workers=num_cores)
 
     #conf, accuracy = visual_recog.evaluate_recognition_system(num_workers=num_cores)
     #print(conf)
