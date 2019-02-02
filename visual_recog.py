@@ -7,7 +7,7 @@ import math
 import visual_words
 import skimage.io
 import matplotlib.pyplot as plt
-from multiprocessing.pool import ThreadPool as Pool
+from multiprocessing import Pool
 
 
 def build_recognition_system(num_workers=2):
@@ -39,7 +39,7 @@ def build_recognition_system(num_workers=2):
     features = np.zeros((labels.size, feature_size))
 
     i = 0
-    pool = Pool(num_workers)
+    pool = Pool(processes=num_workers)
     for file_path in file_paths:
         pool.apply_async(get_image_feature_worker, (file_path,dictionary,SPM_layer_num,K,i,save_dir))
         i+=1
@@ -99,44 +99,40 @@ def evaluate_recognition_system(num_workers=2):
     trained_labels = trained_system['labels']
     dictionary = trained_system['dictionary']
     K = dictionary.shape[0]
+    tmpsavedir = os.path.join("..", "labels")
 
-    result_labels = np.zeros(test_labels.size)
     i = 0
     pool = Pool(num_workers)
     for file_path in test_files:
-        pool.apply_async(evaluation_worker, args = (file_path,dictionary,SPM_layer_num,K,i, trained_features, trained_labels, result_labels), callback = evaluation_callback)
+        pool.apply_async(evaluation_worker, args = (file_path,dictionary,SPM_layer_num,K,i, trained_features, trained_labels, tmpsavedir))
         i+=1
     pool.close()
     pool.join()
 
-    print("Constructing confusion matrix")
-
     conf = np.zeros((8,8))
-    for i in range(len(result_labels)):
-        eval_label = int(result_labels[i])
-        true_label = test_labels[i]
-        print("Test {} classified {} as {}".format(i, true_label, eval_label))
+    print("Constructing confusion matrix")
+    for filename in os.listdir(tmpsavedir):
+        print(filename)
+        result = np.load(os.path.join(tmpsavedir, filename))
+        index = result[0]
+        eval_label = result[1]
+        true_label = test_labels[index]
+        print("Test {} classified {} as {}".format(index, true_label, eval_label))
         conf[true_label][eval_label] += 1
     accuracy = np.diag(conf).sum()/conf.sum()
 
     return(conf, accuracy)
 
 
-def evaluation_worker(file_path, dictionary, SPM_layer_num, K, index, trained_features, trained_labels, result_labels):
+def evaluation_worker(file_path, dictionary, SPM_layer_num, K, index, trained_features, trained_labels, tmpsavedir):
     print("#{}: Processing image at {}".format(index, file_path))
     feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
-    print("#{}: Finding best label from feature of shape {}".format(index, feature.shape))
     sim = distance_to_set(feature, trained_features)
     max_index = sim.argmax(axis=0)
     label = trained_labels[max_index]
 
-    return (index, label, result_labels)
-
-
-def evaluation_callback(result):
-    index, label, result_labels = result
-    print("Saving label {} at index {}".format(label, index))
-    result_labels[index] = label
+    print("#{}: Found label {} with similarity of {}%".format(index, label, sim[max_index]))
+    np.save(os.path.join(tmpsavedir, str(index)), np.asarray((index,label)))
 
 def get_image_feature(file_path,dictionary,layer_num,K):
     '''
@@ -217,7 +213,8 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
         cells = np.array_split(row, 2**(layer_num -1), axis=1)
         for cell in cells:
             hist = get_feature_from_wordmap(cell, dict_size)
-            hist_all[i:i+dict_size] = hist * base_weight
+            hist_all[i:i+dict_size] = hist * base_weight / (2**(2*(layer_num-1)))
+            print(np.sum(hist_all[i:i+dict_size]))
             i+=dict_size
     
     #Construct histograms from previous layer
@@ -231,15 +228,15 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
             row,col = np.unravel_index(j, (curr_len, curr_len))
             start1 = np.ravel_multi_index((row*2,col*2*dict_size), (prev_len, prev_len*dict_size)) 
             start2 = start1 + dict_size * prev_len
-            if(curr_layer != 0):
-                weight = 0.5
-            else:
+            if(curr_layer == 0):
                 weight = 1
+            else:
+                weight = 0.5
             hist1 = (prev_hists[start1:start1+dict_size])
             hist2 = (prev_hists[start1 + dict_size:start1+dict_size*2])
             hist3 = (prev_hists[start2:start2+dict_size])
             hist4 = (prev_hists[start2 + dict_size:start2+dict_size*2])
-            hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight
-
+            hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight / (curr_len*curr_len) * (prev_len * prev_len)
+            print(np.sum(hist_all[i:i+dict_size]))
             i+=dict_size
     return hist_all
