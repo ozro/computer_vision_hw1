@@ -68,7 +68,6 @@ def get_image_feature_worker(file_path, dictionary, SPM_layer_num, K, index):
     * feature: SPM histogram vector for image 
     '''
 
-    print("#{}: Processing image at {}".format(index, file_path))
     feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
     return (index, feature)
 
@@ -118,13 +117,11 @@ def evaluate_recognition_system(num_workers=2):
     return(conf, accuracy)
 
 def evaluation_worker(file_path, dictionary, SPM_layer_num, K, index, trained_features, trained_labels):
-    print("#{}: Processing image at {}".format(index, file_path))
     feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
     sim = distance_to_set(feature, trained_features)
     max_index = sim.argmax(axis=0)
     label = trained_labels[max_index]
 
-    print("#{}: Found label {} for class {} with similarity of {}%".format(index, label, trained_labels[index], sim[max_index] * 100))
     return (index, label)
 
 def get_image_feature(file_path,dictionary,layer_num,K):
