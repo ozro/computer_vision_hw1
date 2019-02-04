@@ -34,26 +34,25 @@ def build_recognition_system(num_workers=2):
     labels = train_data['labels']
     SPM_layer_num = 3
     K = dictionary.shape[0]
-    save_dir = os.path.join("..","features")
     feature_size = int(K*(4**SPM_layer_num-1)/3)
     features = np.zeros((labels.size, feature_size))
 
     i = 0
+    results = []
     pool = Pool(processes=num_workers)
     for file_path in file_paths:
-        pool.apply_async(get_image_feature_worker, (file_path,dictionary,SPM_layer_num,K,i,save_dir))
+        r = pool.apply_async(get_image_feature_worker, (file_path,dictionary,SPM_layer_num,K,i))
+        results.append(r)
         i+=1
     pool.close()
     pool.join()
 
-    i = 0
-    for filename in os.listdir(save_dir):
-        print("Adding {} to index {}".format(os.path.join(save_dir, filename), i))
-        features[i,:] = np.load(os.path.join(save_dir, filename))
-        i += 1
+    for r in results:
+        index, feature = r.get()
+        features[index,:] = feature 
     np.savez("trained_system", dictionary=dictionary, features=features, labels=labels, SPM_layer_num=SPM_layer_num)
 
-def get_image_feature_worker(file_path, dictionary, SPM_layer_num, K, index, save_dir):
+def get_image_feature_worker(file_path, dictionary, SPM_layer_num, K, index):
     '''
     Worker for asynchronous extraction of image feature vector`
 
@@ -65,15 +64,13 @@ def get_image_feature_worker(file_path, dictionary, SPM_layer_num, K, index, sav
     * index: index of current image
     * save_dir: directory to save results to 
 
-    [saved]
+    [output]
     * feature: SPM histogram vector for image 
     '''
 
     print("#{}: Processing image at {}".format(index, file_path))
     feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
-    tmpfilename = os.path.join(save_dir, "{}".format(index)) 
-    print("#{}: Saving response with shape {} at {}".format(index, feature.shape, tmpfilename))
-    np.save(tmpfilename, feature)
+    return (index, feature)
 
 def evaluate_recognition_system(num_workers=2):
     '''
@@ -99,40 +96,36 @@ def evaluate_recognition_system(num_workers=2):
     trained_labels = trained_system['labels']
     dictionary = trained_system['dictionary']
     K = dictionary.shape[0]
-    tmpsavedir = os.path.join("..", "labels")
 
     i = 0
     pool = Pool(num_workers)
+    results = []
     for file_path in test_files:
-        pool.apply_async(evaluation_worker, args = (file_path,dictionary,SPM_layer_num,K,i, trained_features, trained_labels, tmpsavedir))
+        r = pool.apply_async(evaluation_worker, args = (file_path,dictionary,SPM_layer_num,K,i, trained_features, trained_labels))
+        results.append(r)
         i+=1
     pool.close()
     pool.join()
 
     conf = np.zeros((8,8))
-    print("Constructing confusion matrix")
-    for filename in os.listdir(tmpsavedir):
-        print(filename)
-        result = np.load(os.path.join(tmpsavedir, filename))
-        index = result[0]
-        eval_label = result[1]
+    for r in results:
+        (index, eval_label) = r.get()
         true_label = test_labels[index]
-        print("Test {} classified {} as {}".format(index, true_label, eval_label))
         conf[true_label][eval_label] += 1
+
     accuracy = np.diag(conf).sum()/conf.sum()
 
     return(conf, accuracy)
 
-
-def evaluation_worker(file_path, dictionary, SPM_layer_num, K, index, trained_features, trained_labels, tmpsavedir):
+def evaluation_worker(file_path, dictionary, SPM_layer_num, K, index, trained_features, trained_labels):
     print("#{}: Processing image at {}".format(index, file_path))
     feature = get_image_feature(os.path.join("..", "data", file_path), dictionary, SPM_layer_num, K)
     sim = distance_to_set(feature, trained_features)
     max_index = sim.argmax(axis=0)
     label = trained_labels[max_index]
 
-    print("#{}: Found label {} with similarity of {}%".format(index, label, sim[max_index]))
-    np.save(os.path.join(tmpsavedir, str(index)), np.asarray((index,label)))
+    print("#{}: Found label {} for class {} with similarity of {}%".format(index, label, trained_labels[index], sim[max_index] * 100))
+    return (index, label)
 
 def get_image_feature(file_path,dictionary,layer_num,K):
     '''
@@ -214,7 +207,6 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
         for cell in cells:
             hist = get_feature_from_wordmap(cell, dict_size)
             hist_all[i:i+dict_size] = hist * base_weight / (2**(2*(layer_num-1)))
-            print(np.sum(hist_all[i:i+dict_size]))
             i+=dict_size
     
     #Construct histograms from previous layer
@@ -237,6 +229,5 @@ def get_feature_from_wordmap_SPM(wordmap,layer_num,dict_size):
             hist3 = (prev_hists[start2:start2+dict_size])
             hist4 = (prev_hists[start2 + dict_size:start2+dict_size*2])
             hist_all[i:i+dict_size] = (hist1+hist2+hist3+hist4) / 4 * weight / (curr_len*curr_len) * (prev_len * prev_len)
-            print(np.sum(hist_all[i:i+dict_size]))
             i+=dict_size
     return hist_all
